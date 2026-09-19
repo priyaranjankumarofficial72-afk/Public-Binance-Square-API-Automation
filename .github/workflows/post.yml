@@ -10,11 +10,26 @@ on:
 jobs:
   post:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Send post to Binance Square
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run posting script
+        env:
+          BINANCE_KEY: ${{ secrets.BINANCE_KEY }}
+        run: python scripts/auto_post.py
+
+      - name: Commit updated counter
         run: |
-          curl -X POST "https://www.binance.com/bapi/composite/v1/public/pgc/openApi/content/add" \
-            -H "X-Square-OpenAPI-Key: ${{ secrets.BINANCE_KEY }}" \
-            -H "Content-Type: application/json" \
-            -H "clienttype: binanceSkill" \
-            -d '{"bodyTextOnly": "Auto-post test from scheduled workflow! $BTC"}'
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add counter.txt
+          git diff --staged --quiet || git commit -m "Update counter"
+          git push
