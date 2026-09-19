@@ -87,6 +87,39 @@ def extract_coin_from_title(title):
     return None
 
 
+def ask_groq(prompt):
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        print("No GROQ_API_KEY set")
+        return None
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [
+            {"role": "system", "content": "You are a crypto content writer for Binance Square. Write short viral posts with LOTS of emojis. Never copy headlines. Write your own angle. Max 80 words. End with a cashtag like $BTC or $ETH. Include a disclaimer like 'DYOR, NFA'. Plain text with emojis only, no markdown."},
+            {"role": "user", "content": prompt}
+        ],
+        "max_tokens": 500,
+        "temperature": 0.9
+    }
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(url, data=data, headers={
+        'Authorization': 'Bearer ' + api_key,
+        'Content-Type': 'application/json'
+    }, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            result = json.loads(r.read())
+            text = result['choices'][0]['message']['content'].strip()
+            print("Groq generated " + str(len(text)) + " chars")
+            return text
+    except Exception as e:
+        print("Groq error: " + str(e))
+        if hasattr(e, 'read'):
+            print(e.read().decode()[:300])
+        return None
+
+
 def ema(prices, period):
     if len(prices) < period:
         return None
@@ -100,7 +133,8 @@ def ema(prices, period):
 def rsi(prices, period=14):
     if len(prices) < period + 1:
         return None
-    gains, losses = 0, 0
+    gains = 0
+    losses = 0
     for i in range(1, period + 1):
         diff = prices[i] - prices[i-1]
         if diff > 0:
@@ -172,6 +206,7 @@ def atr(highs, lows, closes, period=14):
         val = (val * (period - 1) + tr) / period
     return val
 
+
 def fetch_market():
     url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&price_change_percentage=24h"
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -189,7 +224,7 @@ def fetch_breaking_news():
         raw = data.get('articles', data) if isinstance(data, dict) else data
         articles = [a for a in raw if isinstance(a, dict) and is_crypto_news(a.get('title', ''))]
     except Exception as e:
-        print(f"Breaking news failed: {e}")
+        print("Breaking news failed: " + str(e))
     if len(articles) < 2:
         try:
             url = "https://cryptocurrency.cv/api/news?limit=40"
@@ -200,7 +235,7 @@ def fetch_breaking_news():
             more = [a for a in raw if isinstance(a, dict) and is_crypto_news(a.get('title', ''))]
             articles.extend(more)
         except Exception as e:
-            print(f"News fetch failed: {e}")
+            print("News fetch failed: " + str(e))
     articles.sort(key=lambda a: is_viral(a.get('title', '')), reverse=True)
     return articles[:10]
 
@@ -214,13 +249,13 @@ def fetch_binance_trending():
         topics = data.get('data', [])
         return [t.get('topic', '') for t in topics[:5] if t.get('topic')]
     except Exception as e:
-        print(f"Trending fetch failed: {e}")
+        print("Trending failed: " + str(e))
         return []
 
 
 def fetch_ohlc(coin_id):
     try:
-        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days=1"
+        url = "https://api.coingecko.com/api/v3/coins/" + coin_id + "/ohlc?vs_currency=usd&days=1"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as r:
             data = json.loads(r.read())
@@ -229,102 +264,48 @@ def fetch_ohlc(coin_id):
         return None, None, None
 
 
-OPENERS_GAINER = [
-    "Yo yo yo! Look at this rocket!",
-    "Hey hey hey! The bulls are back!",
-    "Legends! Eyes here!",
-    "Wassup traders! Green candles incoming!"
-]
+def build_ai_news_post(article):
+    title = article.get('title', '')
+    coin = extract_coin_from_title(title) or "BTC"
+    prompt = "Write a viral crypto news post about this topic: '" + title + "'. Do NOT copy the headline. Write your own angle about how this affects the market. Use LOTS of emojis. End with the cashtag $" + coin + " and a short disclaimer DYOR NFA."
+    ai_text = ask_groq(prompt)
+    if ai_text:
+        return ai_text
+    return "CRYPTO NEWS ALERT\n\nHey fam! Something big is happening in the market right now. Stay alert.\n\n- Volatility incoming\n- Watch key levels\n- Stay sharp\n\nDYOR, NFA\n\n$" + coin
 
-REASONS_GAINER = [
-    ["Strong buying volume", "Breaking resistance levels", "Momentum building"],
-    ["Whale accumulation spotted", "Sentiment flipping bullish", "Support holding firm"],
-    ["Volume spike confirmed", "Social buzz rising", "Trend reversing up"]
-]
 
-CLOSERS_GAINER = ["Don't chase green candles, fam!", "Stay smart out there!", "Manage your risk!"]
-
-OPENERS_LOSER = [
-    "Ouch fam! This one is hurting today.",
-    "Hey fam! Rough day for this one.",
-    "Yo traders! Dip alert incoming!"
-]
-
-REASONS_LOSER = [
-    ["Whales taking profits", "Weak market sentiment", "Broke key support"],
-    ["Profit-taking after a run", "General market weakness", "Lost a key level"],
-    ["Exchange inflows spiking", "Sentiment turning bearish", "Trendline broken"]
-]
-
-CLOSERS_LOSER = ["Don't panic sell!", "Watch for a bounce!", "Stay patient, fam!"]
-
-OPENERS_ANALYSIS = [
-    "Hey fam! Time for my algo read!",
-    "Traders! Let's analyze this one!",
-    "Legends! My indicators just finished!"
-]
+def build_ai_trending_post(tier_a, exclude=None):
+    topics = fetch_binance_trending()
+    if not topics:
+        topics = ["Bitcoin", "Ethereum", "CryptoMarket", "Altcoins", "DeFi"]
+    hashtags = " ".join(["#" + t.replace(" ", "") for t in topics[:5]])
+    prompt = "Write a viral crypto trending post for Binance Square. Today's trending topics: " + ", ".join(topics[:5]) + ". Include these hashtags: " + hashtags + ". Use LOTS of emojis. Friendly tone. End with #Binance #Crypto."
+    ai_text = ask_groq(prompt)
+    if ai_text:
+        return ai_text
+    return "BINANCE TRENDING NOW\n\n" + hashtags + "\n\n- Sentiment active\n- Volume picking up\n- Traders positioning\n\n#Binance #Crypto"
 
 
 def build_gainer_post(coin):
-    opener = random.choice(OPENERS_GAINER)
-    reasons = "\n".join(random.choice(REASONS_GAINER))
-    closer = random.choice(CLOSERS_GAINER)
     sym = coin['symbol'].upper()
     chg = coin['price_change_percentage_24h']
-    return f"TOP GAINER: ${sym} Up {chg:.1f}%\n\n{opener}\n\n{coin['name']} is flying - up {chg:.1f}% in 24h!\n\nWhy the pump?\n\n{reasons}\n\nCurrent price: ${coin['current_price']:,.4f}\n\nMarket Impact: Momentum traders may pile in. Watch for a pullback.\n\n{closer}\n\n${sym}"
+    price = coin['current_price']
+    prompt = "Write a viral top gainer post about " + coin['name'] + " ($" + sym + ") which is up " + str(round(chg, 1)) + "% in 24 hours, price $" + str(round(price, 4)) + ". Use LOTS of emojis. Explain why it pumped, the market impact, and warn about chasing green candles. End with $" + sym + "."
+    ai_text = ask_groq(prompt)
+    if ai_text:
+        return ai_text
+    return "TOP GAINER: $" + sym + " Up " + str(round(chg, 1)) + "%\n\n" + coin['name'] + " is flying - up " + str(round(chg, 1)) + "% in 24h!\n\n- Strong buying volume\n- Breaking resistance\n- Momentum building\n\nCurrent price: $" + str(round(price, 4)) + "\n\nMarket Impact: Watch for a pullback.\n\nDYOR, NFA\n\n$" + sym
 
 
 def build_loser_post(coin):
-    opener = random.choice(OPENERS_LOSER)
-    reasons = "\n".join(random.choice(REASONS_LOSER))
-    closer = random.choice(CLOSERS_LOSER)
     sym = coin['symbol'].upper()
     chg = abs(coin['price_change_percentage_24h'])
-    return f"TOP LOSER: ${sym} Down {chg:.1f}%\n\n{opener}\n\n{coin['name']} dropped {chg:.1f}% in 24h.\n\nWhy the dump?\n\n{reasons}\n\nPrice: ${coin['current_price']:,.4f}\n\nMarket Impact: Weak hands may exit. Watch support closely.\n\n{closer}\n\n${sym}"
-
-
-def build_news_post(article, used_designs):
-    title = article.get('title', '')
-    coin = extract_coin_from_title(title) or "GENERIC"
-    if coin == "BTC":
-        templates = ["BTC ALERT - Something's Moving\n\nHey fam! Big money is shifting right now.\n\nWhat this means:\n- Volatility incoming\n- Watch key levels\n- Stay alert\n\nDYOR\n\n$BTC",
-                     "BITCOIN - MOMENTUM BUILDING\n\nLegends! BTC in the spotlight today.\n\n- Sentiment shifting\n- Traders positioning\n- Watch altcoins\n\nStay sharp!\n\n$BTC"]
-    elif coin == "ETH":
-        templates = ["ETH MOVES - EYES HERE\n\nEthereum is making headlines.\n\n- Volatility up\n- Watch support\n- Follow-through matters\n\n$ETH",
-                     "ETHEREUM ALERT\n\nSomething's stirring with ETH.\n\n- Big players active\n- Sentiment shifting\n- Position carefully\n\n$ETH"]
-    elif coin == "SOL":
-        templates = ["SOLANA BREWING\n\nSolana is trending hard.\n\n- Network spiking\n- Traders piling in\n- Volatility incoming\n\n$SOL",
-                     "SOL ALERT - HOT TOPIC\n\nSOL is talk of the town.\n\n- Sentiment strong\n- Volume picking up\n- Stay alert\n\n$SOL"]
-    else:
-        templates = ["CRYPTO MARKET - BIG MOVES INCOMING\n\nBig things brewing today.\n\n- Volatility on horizon\n- Sentiment shifting\n- Watch majors\n\nDYOR",
-                     "MARKET ALERT - HEADS UP\n\nSomething significant is happening.\n\n- Big moves possible\n- Watch volume\n- Position smart",
-                     "CRYPTO FLASH\n\nCrypto is buzzing today.\n\n- Sharp moves\n- Sentiment shifts\n- Follow-through\n\nDYOR"]
-    available = [t for t in templates if t not in used_designs]
-    if not available:
-        available = templates
-    design = random.choice(available)
-    used_designs.append(design)
-    return design
-
-
-def build_trending_post(tier_a, exclude=None):
-    live_topics = fetch_binance_trending()
-    print(f"Live trending topics: {live_topics}")
-    if not live_topics:
-        live_topics = ["Bitcoin", "Ethereum", "CryptoMarket", "Altcoins", "DeFi"]
-    hashtags = " ".join([f"#{t.replace(' ', '')}" for t in live_topics[:5]])
-    headline = live_topics[0]
-    templates = [
-        f"BINANCE TRENDING NOW\n\nHere's what's hot on Binance Square:\n\n{hashtags}\n\n- Sentiment active\n- Volume picking up\n- Traders positioning\n\n#Binance #Crypto",
-        f"HOT ON BINANCE SQUARE\n\nWhat's trending today:\n\n{hashtags}\n\n- Attention focused here\n- Big players active\n- Volatility incoming\n\n#BinanceSquare #Crypto",
-        f"TRENDING: {headline}\n\nThe crypto world is buzzing.\n\n{hashtags}\n\n- Momentum building\n- Watch majors\n- Stay informed\n\n#Binance #Crypto",
-        f"WHAT'S TRENDING ON BINANCE\n\n{hashtags}\n\n- Volume spiking\n- Sentiment active\n- Watch follow-through\n\n#Binance #Crypto",
-        f"MARKET BUZZ - BINANCE SQUARE\n\n{hashtags}\n\n- Sharp moves possible\n- Sentiment shifting\n- Position carefully\n\n#Crypto #BinanceSquare"
-    ]
-    available = [t for t in templates if t != exclude]
-    if not available:
-        available = templates
-    return random.choice(available)
+    price = coin['current_price']
+    prompt = "Write a viral top loser post about " + coin['name'] + " ($" + sym + ") which is down " + str(round(chg, 1)) + "% in 24 hours, price $" + str(round(price, 4)) + ". Use LOTS of emojis. Explain why it dumped, recovery outlook, and reassure not to panic sell. End with $" + sym + "."
+    ai_text = ask_groq(prompt)
+    if ai_text:
+        return ai_text
+    return "TOP LOSER: $" + sym + " Down " + str(round(chg, 1)) + "%\n\n" + coin['name'] + " dropped " + str(round(chg, 1)) + "% in 24h.\n\n- Whales taking profits\n- Weak sentiment\n- Broke support\n\nPrice: $" + str(round(price, 4)) + "\n\nMarket Impact: Watch support. Don't panic sell.\n\nDYOR, NFA\n\n$" + sym
 
 
 def build_analysis_post(coin, closes, highs, lows):
@@ -342,76 +323,79 @@ def build_analysis_post(coin, closes, highs, lows):
     if e20 and e50:
         if e20 > e50:
             score += 1
-            reasons.append("EMA20 > EMA50 - bullish")
+            reasons.append("EMA20 above EMA50 - bullish trend")
         else:
             score -= 1
-            reasons.append("EMA20 < EMA50 - bearish")
+            reasons.append("EMA20 below EMA50 - bearish trend")
     if r14 is not None:
         if r14 > 70:
             score -= 1
-            reasons.append(f"RSI {r14:.1f} - overbought")
+            reasons.append("RSI " + str(round(r14, 1)) + " overbought")
         elif r14 < 30:
             score += 1
-            reasons.append(f"RSI {r14:.1f} - oversold")
+            reasons.append("RSI " + str(round(r14, 1)) + " oversold")
         elif r14 > 50:
             score += 1
-            reasons.append(f"RSI {r14:.1f} - bullish")
+            reasons.append("RSI " + str(round(r14, 1)) + " bullish")
         else:
             score -= 1
-            reasons.append(f"RSI {r14:.1f} - bearish")
+            reasons.append("RSI " + str(round(r14, 1)) + " bearish")
     if m is not None and s is not None:
         if m > s:
             score += 1
-            reasons.append(f"MACD bullish (hist {h:.4f})")
+            reasons.append("MACD bullish crossover")
         else:
             score -= 1
-            reasons.append(f"MACD bearish (hist {h:.4f})")
+            reasons.append("MACD bearish crossover")
     if bu and bl:
         if price > bu:
             score -= 1
-            reasons.append("Above upper Bollinger Band")
+            reasons.append("Above upper Bollinger Band - overextended")
         elif price < bl:
             score += 1
-            reasons.append("Below lower Bollinger Band")
+            reasons.append("Below lower Bollinger Band - oversold")
         else:
-            reasons.append("Inside Bollinger Bands")
+            reasons.append("Inside Bollinger Bands - neutral")
     if score >= 3:
         signal = "STRONG BUY"
         direction = "BUY"
-        outlook = "High-conviction bullish setup."
     elif score >= 1:
         signal = "BUY"
         direction = "BUY"
-        outlook = "Mild bullish bias."
     elif score <= -3:
         signal = "STRONG SELL"
         direction = "SELL"
-        outlook = "High-conviction bearish setup."
     elif score <= -1:
         signal = "SELL"
         direction = "SELL"
-        outlook = "Mild bearish bias."
     else:
         signal = "HOLD"
         direction = "HOLD"
-        outlook = "Mixed signals - wait."
-    trade_section = "No trade setup - wait."
+    trade_section = "No trade setup at the moment"
     if direction in ["BUY", "SELL"] and a:
         if direction == "BUY":
             entry = price
             sl = max(entry - 1.5*a, min(lows[-10:]) * 0.99 if len(lows) >= 10 else entry * 0.95)
             risk = entry - sl
-            tp1, tp2, tp3 = entry + risk*1.5, entry + risk*2.5, entry + risk*4.0
+            tp1 = entry + risk*1.5
+            tp2 = entry + risk*2.5
+            tp3 = entry + risk*4.0
         else:
             entry = price
             sl = min(entry + 1.5*a, max(highs[-10:]) * 1.01 if len(highs) >= 10 else entry * 1.05)
             risk = sl - entry
-            tp1, tp2, tp3 = entry - risk*1.5, entry - risk*2.5, entry - risk*4.0
+            tp1 = entry - risk*1.5
+            tp2 = entry - risk*2.5
+            tp3 = entry - risk*4.0
         if risk > 0:
-            trade_section = f"Trade Setup:\nEntry: ${entry:,.4f}\nStop Loss: ${sl:,.4f} ({(risk/entry)*100:.1f}% risk)\nTP1: ${tp1:,.4f} (RR 1.5x)\nTP2: ${tp2:,.4f} (RR 2.5x)\nTP3: ${tp3:,.4f} (RR 4.0x)"
-    opener = random.choice(OPENERS_ANALYSIS)
-    return f"AI ANALYSIS: ${sym}\n\n{opener}\n\n{coin['name']}:\nPrice: ${price:,.4f}\n24h: {change:+.1f}%\n\nIndicators:\n{chr(10).join(reasons)}\n\nSignal: {signal}\n\n{trade_section}\n\nOutlook: {outlook}\n\nNFA. DYOR. Use stop loss!\n\n${sym}"
+            trade_section = "Entry: $" + str(round(entry, 4)) + "\nStop Loss: $" + str(round(sl, 4)) + " (" + str(round((risk/entry)*100, 1)) + "% risk)\nTP1: $" + str(round(tp1, 4)) + " (RR 1.5x)\nTP2: $" + str(round(tp2, 4)) + " (RR 2.5x)\nTP3: $" + str(round(tp3, 4)) + " (RR 4.0x)"
+    prompt = "Write a viral AI analysis post for " + coin['name'] + " ($" + sym + "). Price $" + str(round(price, 4)) + ", 24h change " + str(round(change, 1)) + "%. Signal: " + signal + ". Indicators: " + ", ".join(reasons) + ". Trade setup: " + trade_section + ". Use LOTS of emojis. Include a disclaimer. End with $" + sym + "."
+    ai_text = ask_groq(prompt)
+    if ai_text:
+        return ai_text
+    return "AI ANALYSIS: $" + sym + "\n\n" + coin['name'] + "\nPrice: $" + str(round(price, 4)) + "\n24h: " + str(round(change, 1)) + "%\n\nIndicators:\n" + "\n".join(reasons) + "\n\nSignal: " + signal + "\n\nTrade Setup:\n" + trade_section + "\n\nNFA, DYOR, use stop loss!\n\n$" + sym
 
+    
 
 def post_to_binance(text, api_key):
     payload = json.dumps({"bodyTextOnly": text}).encode('utf-8')
@@ -427,10 +411,10 @@ def post_to_binance(text, api_key):
     )
     try:
         with urllib.request.urlopen(req) as r:
-            print("POST SUCCESS:", r.read().decode()[:200])
+            print("POST SUCCESS: " + r.read().decode()[:200])
             return True
     except Exception as e:
-        print("POST ERROR:", e)
+        print("POST ERROR: " + str(e))
         if hasattr(e, 'read'):
             print(e.read().decode()[:300])
         return False
@@ -439,54 +423,55 @@ def post_to_binance(text, api_key):
 def main():
     api_key = os.environ.get("BINANCE_KEY")
     if not api_key:
-        raise Exception("BINANCE_KEY secret is missing!")
+        raise Exception("BINANCE_KEY secret is missing")
     coins = fetch_market()
     tier_a = [c for c in coins if c['id'] in BINANCE_TIER_A and c.get('price_change_percentage_24h') is not None]
     tier_b = [c for c in coins if c['id'] in BINANCE_TIER_B and c.get('price_change_percentage_24h') is not None]
     tier_a.sort(key=lambda x: x['price_change_percentage_24h'], reverse=True)
     tier_b.sort(key=lambda x: x['price_change_percentage_24h'], reverse=True)
-    print(f"Tier A: {len(tier_a)} | Tier B: {len(tier_b)}")
+    print("Tier A: " + str(len(tier_a)) + " | Tier B: " + str(len(tier_b)))
     if len(tier_a) < 5:
-        raise Exception("Not enough Tier A coins")
+        raise Exception("Not enough Binance Tier A coins found")
     news = fetch_breaking_news()
-    print(f"Fetched {len(news)} news articles")
+    print("News fetched: " + str(len(news)))
     posts = []
-    used_news_designs = []
     used_coin_ids = set()
     if len(news) >= 1:
-        posts.append(build_news_post(news[0], used_news_designs))
-        print("Post 1: News")
+        posts.append(build_ai_news_post(news[0]))
+        print("Post 1: AI News")
     else:
-        posts.append(build_trending_post(tier_a))
-        print("Post 1: Trending")
+        posts.append(build_ai_trending_post(tier_a))
+        print("Post 1: AI Trending")
     if len(news) >= 2:
-        posts.append(build_news_post(news[1], used_news_designs))
-        print("Post 2: News")
+        posts.append(build_ai_news_post(news[1]))
+        print("Post 2: AI News")
     else:
-        posts.append(build_trending_post(tier_a, exclude=posts[0]))
-        print("Post 2: Trending")
+        posts.append(build_ai_trending_post(tier_a))
+        print("Post 2: AI Trending")
     gainer = next((c for c in tier_a if c['id'] not in used_coin_ids), tier_a[0])
     posts.append(build_gainer_post(gainer))
     used_coin_ids.add(gainer['id'])
+    print("Post 3: Gainer " + gainer['symbol'].upper())
     loser = next((c for c in reversed(tier_a) if c['id'] not in used_coin_ids), tier_a[-1])
     posts.append(build_loser_post(loser))
     used_coin_ids.add(loser['id'])
-    potential = [c for c in tier_b if c.get('total_volume', 0) > 5_000_000 and c['id'] not in used_coin_ids]
+    print("Post 4: Loser " + loser['symbol'].upper())
+    potential = [c for c in tier_b if c.get('total_volume', 0) > 5000000 and c['id'] not in used_coin_ids]
     random.shuffle(potential)
     for candidate in potential[:8]:
-        print(f"Trying analysis on: {candidate['name']}")
+        print("Analysis try: " + candidate['name'])
         closes, highs, lows = fetch_ohlc(candidate['id'])
         if closes and len(closes) >= 20:
             posts.append(build_analysis_post(candidate, closes, highs, lows))
-            print(f"Analysis ready: {candidate['name']}")
+            print("Post 5: Analysis " + candidate['symbol'].upper())
             break
         time.sleep(1)
     for i, text in enumerate(posts, 1):
-        print(f"\n=== Post {i}/{len(posts)} ===")
+        print("\n=== Post " + str(i) + "/" + str(len(posts)) + " ===")
         post_to_binance(text, api_key)
         if i < len(posts):
             time.sleep(5)
-    print(f"\nAll {len(posts)} posts done!")
+    print("\nAll " + str(len(posts)) + " posts completed")
 
 
 if __name__ == "__main__":
