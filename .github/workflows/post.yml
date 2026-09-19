@@ -1,6 +1,10 @@
-name: Post to Binance Square
+name: Auto Post to Binance Square
 
 on:
+  schedule:
+    - cron: '30 0 * * *'
+    - cron: '30 8 * * *'
+    - cron: '30 16 * * *'
   workflow_dispatch:
 
 jobs:
@@ -13,4 +17,4 @@ jobs:
             -H "X-Square-OpenAPI-Key: ${{ secrets.BINANCE_KEY }}" \
             -H "Content-Type: application/json" \
             -H "clienttype: binanceSkill" \
-            -d '{"bodyTextOnly": "Hello from GitHub Actions! Testing my first automated post. $BTC"}'
+            -d '{"bodyTextOnly": "Auto-post test from scheduled workflow! $BTC"}'
