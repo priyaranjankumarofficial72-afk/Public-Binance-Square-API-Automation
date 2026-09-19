@@ -15,19 +15,20 @@ BINANCE_TIER_A = {
 }
 
 BINANCE_TIER_B = BINANCE_TIER_A | {
-    "render-token", "fetch-ai", "immutable-x", "worldcoin-wld", "jupiter-exchange-solana",
-    "pyth-network", "bonk", "dogwifcoin", "floki", "the-sandbox", "decentraland",
-    "axie-infinity", "gala", "enjincoin", "chiliz", "curve-dao-token",
-    "compound-governance-token", "synthetix-network-token", "pancakeswap-token",
-    "lido-dao", "rocket-pool", "frax-share", "convex-finance", "pax-gold",
-    "tether-gold", "havven", "dydx-chain", "gmx", "loopring", "uma",
-    "band-protocol", "ankr", "ocean-protocol", "numeraire", "balancer",
-    "storj", "ravencoin", "horizen", "wax", "iostoken", "kucoin-shares",
-    "bitcoin-cash", "bitcoin-cash-sv", "ethereum-classic", "zcash", "dash",
-    "monero", "neo", "ontology", "qtum", "waves", "iota", "algorand",
-    "flow", "mina-protocol", "klay-token", "osmosis", "kava", "celo",
-    "cronos", "fantom", "harmony", "zilliqa", "icp", "kaspa",
-    "jito-governance-token", "ethena", "pendle", "ondo-finance", "stargate-finance"
+    "render-token", "fetch-ai", "immutable-x", "worldcoin-wld",
+    "jupiter-exchange-solana", "pyth-network", "bonk", "dogwifcoin",
+    "floki", "the-sandbox", "decentraland", "axie-infinity", "gala",
+    "enjincoin", "chiliz", "curve-dao-token", "compound-governance-token",
+    "synthetix-network-token", "pancakeswap-token", "lido-dao", "rocket-pool",
+    "frax-share", "convex-finance", "pax-gold", "tether-gold", "havven",
+    "dydx-chain", "gmx", "loopring", "uma", "band-protocol", "ankr",
+    "ocean-protocol", "numeraire", "balancer", "storj", "ravencoin",
+    "horizen", "wax", "iostoken", "kucoin-shares", "bitcoin-cash",
+    "bitcoin-cash-sv", "ethereum-classic", "zcash", "dash", "monero",
+    "neo", "ontology", "qtum", "waves", "iota", "algorand", "flow",
+    "mina-protocol", "klay-token", "osmosis", "kava", "celo", "cronos",
+    "fantom", "harmony", "zilliqa", "icp", "kaspa", "jito-governance-token",
+    "ethena", "pendle", "ondo-finance", "stargate-finance"
 }
 
 CRYPTO_KEYWORDS = [
@@ -39,21 +40,22 @@ CRYPTO_KEYWORDS = [
     "memecoin", "stablecoin", "usdt", "usdc", "exchange", "wallet",
     "mining", "halving", "whale", "bull", "bear", "market", "trading",
     "sec", "etf", "regulation", "web3", "layer", "l2", "rollup", "dex",
-    "cex", "staking", "yield", "airdrop", "mainnet", "testnet", "fork",
+    "cex", "staking", "yield", "airdrop", "mainnet", "testnet", "fork"
 ]
 
 NON_CRYPTO_KEYWORDS = [
     "stock", "nasdaq", "s&p", "dow jones", "forex", "oil", "gold price",
     "real estate", "mortgage", "inflation report", "fed chair", "earnings",
     "sports", "football", "basketball", "soccer", "movie", "celebrity",
-    "weather", "politics", "election", "war",
+    "weather", "politics", "election", "war"
 ]
 
 VIRAL_KEYWORDS = [
     "breaking", "surge", "crash", "record", "hack", "etf", "sec", "halving",
     "all-time", "ath", "dump", "pump", "skyrocket", "plunge", "soar", "rally",
-    "explode", "crashes", "announces", "approves", "rejects", "bans", "legal",
+    "explode", "crashes", "announces", "approves", "rejects", "bans", "legal"
 ]
+
 
 def is_crypto_news(title):
     t = title.lower()
@@ -61,34 +63,29 @@ def is_crypto_news(title):
         return False
     return any(k in t for k in CRYPTO_KEYWORDS)
 
+
 def is_viral(title):
     t = title.lower()
     return any(k in t for k in VIRAL_KEYWORDS)
 
+
 def extract_coin_from_title(title):
     coin_map = {
-        "bitcoin": "BTC", "btc": "BTC",
-        "ethereum": "ETH", "eth": "ETH",
-        "solana": "SOL", "sol": "SOL",
-        "xrp": "XRP", "ripple": "XRP",
-        "binance": "BNB", "bnb": "BNB",
-        "dogecoin": "DOGE", "doge": "DOGE",
-        "cardano": "ADA", "ada": "ADA",
-        "avalanche": "AVAX", "avax": "AVAX",
-        "chainlink": "LINK", "link": "LINK",
-        "polkadot": "DOT", "dot": "DOT",
-        "polygon": "MATIC", "matic": "MATIC",
-        "shiba": "SHIB", "shib": "SHIB",
-        "litecoin": "LTC", "ltc": "LTC",
-        "uniswap": "UNI", "uni": "UNI",
-        "tron": "TRX", "trx": "TRX",
-        "pepe": "PEPE",
+        "bitcoin": "BTC", "btc": "BTC", "ethereum": "ETH", "eth": "ETH",
+        "solana": "SOL", "sol": "SOL", "xrp": "XRP", "ripple": "XRP",
+        "binance": "BNB", "bnb": "BNB", "dogecoin": "DOGE", "doge": "DOGE",
+        "cardano": "ADA", "ada": "ADA", "avalanche": "AVAX", "avax": "AVAX",
+        "chainlink": "LINK", "link": "LINK", "polkadot": "DOT", "dot": "DOT",
+        "polygon": "MATIC", "matic": "MATIC", "shiba": "SHIB", "shib": "SHIB",
+        "litecoin": "LTC", "ltc": "LTC", "uniswap": "UNI", "uni": "UNI",
+        "tron": "TRX", "trx": "TRX", "pepe": "PEPE"
     }
     t = title.lower()
     for keyword, symbol in coin_map.items():
         if keyword in t:
             return symbol
     return None
+
 
 def ema(prices, period):
     if len(prices) < period:
@@ -98,6 +95,7 @@ def ema(prices, period):
     for p in prices[period:]:
         val = p * k + val * (1 - k)
     return val
+
 
 def rsi(prices, period=14):
     if len(prices) < period + 1:
@@ -128,6 +126,7 @@ def rsi(prices, period=14):
             rsi_val = 100 - (100 / (1 + rs))
     return rsi_val
 
+
 def macd(prices):
     if len(prices) < 35:
         return None, None, None
@@ -149,6 +148,7 @@ def macd(prices):
         return macd_line, None, None
     return macd_line, sig, macd_line - sig
 
+
 def bollinger(prices, period=20, sd=2):
     if len(prices) < period:
         return None, None, None
@@ -157,6 +157,7 @@ def bollinger(prices, period=20, sd=2):
     var = sum((p - sma) ** 2 for p in recent) / period
     std = var ** 0.5
     return sma + sd*std, sma, sma - sd*std
+
 
 def atr(highs, lows, closes, period=14):
     if len(closes) < period + 1:
@@ -171,11 +172,13 @@ def atr(highs, lows, closes, period=14):
         val = (val * (period - 1) + tr) / period
     return val
 
+
 def fetch_market():
     url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&price_change_percentage=24h"
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read())
+
 
 def fetch_breaking_news():
     articles = []
@@ -202,6 +205,20 @@ def fetch_breaking_news():
     articles.sort(key=lambda a: is_viral(a.get('title', '')), reverse=True)
     return articles[:10]
 
+
+def fetch_binance_trending():
+    try:
+        url = "https://www.binance.com/bapi/composite/v1/public/composite/hotTopic/list"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as r:
+            data = json.loads(r.read())
+        topics = data.get('data', [])
+        return [t.get('topic', '') for t in topics[:5] if t.get('topic')]
+    except Exception as e:
+        print(f"Trending fetch failed: {e}")
+        return []
+
+
 def fetch_ohlc(coin_id):
     try:
         url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days=1"
@@ -212,167 +229,70 @@ def fetch_ohlc(coin_id):
     except Exception:
         return None, None, None
 
+
 OPENERS_GAINER = [
     "Yo yo yo! Look at this rocket!",
     "Hey hey hey! The bulls are back!",
     "Legends! Eyes here!",
-    "Wassup traders! Green candles incoming!",
+    "Wassup traders! Green candles incoming!"
 ]
 
 REASONS_GAINER = [
     ["Strong buying volume", "Breaking resistance levels", "Momentum building"],
     ["Whale accumulation spotted", "Sentiment flipping bullish", "Support holding firm"],
-    ["Volume spike confirmed", "Social buzz rising", "Trend reversing up"],
+    ["Volume spike confirmed", "Social buzz rising", "Trend reversing up"]
 ]
 
 CLOSERS_GAINER = [
     "Don't chase green candles, fam!",
     "Stay smart out there!",
-    "Manage your risk!",
+    "Manage your risk!"
 ]
 
 OPENERS_LOSER = [
     "Ouch fam! This one is hurting today.",
     "Hey fam! Rough day for this one.",
-    "Yo traders! Dip alert incoming!",
+    "Yo traders! Dip alert incoming!"
 ]
 
 REASONS_LOSER = [
     ["Whales taking profits", "Weak market sentiment", "Broke key support"],
     ["Profit-taking after a run", "General market weakness", "Lost a key level"],
-    ["Exchange inflows spiking", "Sentiment turning bearish", "Trendline broken"],
+    ["Exchange inflows spiking", "Sentiment turning bearish", "Trendline broken"]
 ]
 
 CLOSERS_LOSER = [
     "Don't panic sell!",
     "Watch for a bounce!",
-    "Stay patient, fam!",
+    "Stay patient, fam!"
 ]
 
 OPENERS_ANALYSIS = [
     "Hey fam! Time for my algo read!",
     "Traders! Let's analyze this one!",
-    "Legends! My indicators just finished!",
+    "Legends! My indicators just finished!"
 ]
 
 NEWS_TEMPLATES = {
     "BTC": [
-        """BTC ALERT — Something's Moving
-
-Hey fam! Big money is shifting right now. Bitcoin is making moves and the market is watching closely.
-
-What this means:
-- Volatility incoming
-- Watch key levels closely
-- Stay alert for follow-through
-
-Bulls or bears? The next few hours will tell.
-
-DYOR
-
-$BTC""",
-        """BITCOIN — MOMENTUM BUILDING
-
-Legends! BTC is in the spotlight today. Something big is brewing.
-
-Key points:
-- Market sentiment shifting
-- Traders positioning
-- Could spark altcoin moves
-
-Stay sharp out there!
-
-$BTC""",
+        "BTC ALERT - Something's Moving\n\nHey fam! Big money is shifting right now. Bitcoin is making moves and the market is watching closely.\n\nWhat this means:\n- Volatility incoming\n- Watch key levels closely\n- Stay alert for follow-through\n\nBulls or bears? The next few hours will tell.\n\nDYOR\n\n$BTC",
+        "BITCOIN - MOMENTUM BUILDING\n\nLegends! BTC is in the spotlight today. Something big is brewing.\n\nKey points:\n- Market sentiment shifting\n- Traders positioning\n- Could spark altcoin moves\n\nStay sharp out there!\n\n$BTC"
     ],
     "ETH": [
-        """ETH MOVES — EYES HERE
-
-Hey fam! Ethereum is making headlines today and traders are reacting fast.
-
-What to watch:
-- Volatility risk up
-- Watch key support/resistance
-- Follow-through matters
-
-Stay patient, fam!
-
-$ETH""",
-        """ETHEREUM ALERT
-
-Legends! Something's stirring with ETH. Market attention is locked in.
-
-Read:
-- Big players active
-- Sentiment shifting
-- Position carefully
-
-DYOR always!
-
-$ETH""",
+        "ETH MOVES - EYES HERE\n\nHey fam! Ethereum is making headlines today and traders are reacting fast.\n\nWhat to watch:\n- Volatility risk up\n- Watch key support/resistance\n- Follow-through matters\n\nStay patient, fam!\n\n$ETH",
+        "ETHEREUM ALERT\n\nLegends! Something's stirring with ETH. Market attention is locked in.\n\nRead:\n- Big players active\n- Sentiment shifting\n- Position carefully\n\nDYOR always!\n\n$ETH"
     ],
     "SOL": [
-        """SOLANA — SOMETHING'S BREWING
-
-Hey fam! Solana is trending hard right now. Eyes on SOL.
-
-What's hot:
-- Network activity spiking
-- Traders piling in
-- Volatility incoming
-
-Watch this one closely!
-
-$SOL""",
-        """SOL ALERT — HOT TOPIC
-
-Legends! SOL is the talk of the town today. Momentum building.
-
-Key reads:
-- Sentiment strong
-- Volume picking up
-- Stay alert
-
-DYOR
-
-$SOL""",
+        "SOLANA - SOMETHING'S BREWING\n\nHey fam! Solana is trending hard right now. Eyes on SOL.\n\nWhat's hot:\n- Network activity spiking\n- Traders piling in\n- Volatility incoming\n\nWatch this one closely!\n\n$SOL",
+        "SOL ALERT - HOT TOPIC\n\nLegends! SOL is the talk of the town today. Momentum building.\n\nKey reads:\n- Sentiment strong\n- Volume picking up\n- Stay alert\n\nDYOR\n\n$SOL"
     ],
     "GENERIC": [
-        """CRYPTO MARKET — BIG MOVES INCOMING
-
-Hey fam! Big things brewing in the crypto space today. The market is feeling the shift.
-
-What this means:
-- Volatility on the horizon
-- Sentiment shifting
-- Watch the majors closely
-
-Stay sharp!
-
-DYOR always""",
-        """MARKET ALERT — HEADS UP
-
-Legends! Something significant is happening in crypto right now. Stay alert.
-
-Key reads:
-- Big moves possible
-- Watch volume closely
-- Position smart
-
-Stay informed, stay ahead!""",
-        """CRYPTO FLASH — EYES ON THE CHARTS
-
-Wassup traders! Crypto is buzzing today and the market feels alive.
-
-Watch for:
-- Sharp moves
-- Sentiment shifts
-- Follow-through
-
-DYOR
-
-Stay ready!""",
+        "CRYPTO MARKET - BIG MOVES INCOMING\n\nHey fam! Big things brewing in the crypto space today. The market is feeling the shift.\n\nWhat this means:\n- Volatility on the horizon\n- Sentiment shifting\n- Watch the majors closely\n\nStay sharp!\n\nDYOR always",
+        "MARKET ALERT - HEADS UP\n\nLegends! Something significant is happening in crypto right now. Stay alert.\n\nKey reads:\n- Big moves possible\n- Watch volume closely\n- Position smart\n\nStay informed, stay ahead!",
+        "CRYPTO FLASH - EYES ON THE CHARTS\n\nWassup traders! Crypto is buzzing today and the market feels alive.\n\nWatch for:\n- Sharp moves\n- Sentiment shifts\n- Follow-through\n\nDYOR\n\nStay ready!"
     ]
 }
+
 
 def build_gainer_post(coin):
     opener = random.choice(OPENERS_GAINER)
@@ -380,23 +300,8 @@ def build_gainer_post(coin):
     closer = random.choice(CLOSERS_GAINER)
     sym = coin['symbol'].upper()
     chg = coin['price_change_percentage_24h']
-    return f"""TOP GAINER: ${sym} Up {chg:.1f}%!
+    return f"TOP GAINER: ${sym} Up {chg:.1f}%\n\n{opener}\n\n{coin['name']} is absolutely flying - up {chg:.1f}% in 24h!\n\nWhy the pump?\n\n{reasons}\n\nCurrent price: ${coin['current_price']:,.4f}\n\nMarket Impact: Momentum traders may pile in. Watch for a pullback after the pump.\n\n{closer}\n\n${sym}"
 
-{opener}
-
-{coin['name']} is absolutely flying — up {chg:.1f}% in 24h!
-
-Why the pump?
-
-{reasons}
-
-Current price: ${coin['current_price']:,.4f}
-
-Market Impact: Momentum traders may pile in. Watch for a pullback after the pump.
-
-{closer}
-
-${sym}"""
 
 def build_loser_post(coin):
     opener = random.choice(OPENERS_LOSER)
@@ -404,23 +309,8 @@ def build_loser_post(coin):
     closer = random.choice(CLOSERS_LOSER)
     sym = coin['symbol'].upper()
     chg = abs(coin['price_change_percentage_24h'])
-    return f"""TOP LOSER: ${sym} Down {chg:.1f}%!
+    return f"TOP LOSER: ${sym} Down {chg:.1f}%\n\n{opener}\n\n{coin['name']} dropped {chg:.1f}% in 24h.\n\nWhy the dump?\n\n{reasons}\n\nPrice: ${coin['current_price']:,.4f}\n\nMarket Impact: Weak hands may exit, creating more downside. Watch support closely.\n\n{closer}\n\n${sym}"
 
-{opener}
-
-{coin['name']} dropped {chg:.1f}% in 24h.
-
-Why the dump?
-
-{reasons}
-
-Price: ${coin['current_price']:,.4f}
-
-Market Impact: Weak hands may exit, creating more downside. Watch support closely.
-
-{closer}
-
-${sym}"""
 
 def build_news_post(article, used_designs):
     title = article.get('title', '')
@@ -432,6 +322,31 @@ def build_news_post(article, used_designs):
     design = random.choice(available)
     used_designs.append(design)
     return design
+
+
+def build_trending_post(tier_a, exclude=None):
+    live_topics = fetch_binance_trending()
+    print(f"Live trending topics: {live_topics}")
+
+    if not live_topics:
+        live_topics = ["Bitcoin", "Ethereum", "CryptoMarket", "Altcoins", "DeFi"]
+
+    hashtags = " ".join([f"#{t.replace(' ', '')}" for t in live_topics[:5]])
+    headline = live_topics[0]
+
+    TRENDING_TEMPLATES = [
+        f"BINANCE TRENDING NOW\n\nHey fam! Here's what's hot on Binance Square right now:\n\n{hashtags}\n\nWhat's moving:\n- Community sentiment active\n- Volume picking up\n- Traders positioning\n\nStay sharp out there!\n\n#Binance #Crypto",
+        f"HOT ON BINANCE SQUARE\n\nLegends! Let's talk about what's trending today:\n\n{hashtags}\n\nWhy it matters:\n- Market attention focused here\n- Big players active\n- Volatility incoming\n\nDYOR always!\n\n#BinanceSquare #CryptoNews",
+        f"TRENDING TOPIC: {headline}\n\nWassup traders! The crypto world is buzzing right now.\n\nTrending hashtags:\n{hashtags}\n\nKey reads:\n- Momentum building\n- Watch the majors\n- Stay informed\n\nNot financial advice - just market vibes!\n\n#Binance #Crypto",
+        f"WHAT'S TRENDING ON BINANCE\n\nFamily! Big activity in the crypto space today. Here's what's hot:\n\n{hashtags}\n\nQuick reads:\n- Volume spiking\n- Sentiment active\n- Watch for follow-through\n\nStay smart!\n\n#Binance #Crypto",
+        f"MARKET BUZZ - BINANCE SQUARE\n\nHey legends! Eyes here. These are the topics everyone's talking about:\n\n{hashtags}\n\nWhat to watch:\n- Sharp moves possible\n- Sentiment shifting\n- Position carefully\n\nStay alert!\n\n#Crypto #BinanceSquare"
+    ]
+
+    available = [t for t in TRENDING_TEMPLATES if t != exclude]
+    if not available:
+        available = TRENDING_TEMPLATES
+    return random.choice(available)
+
 
 def build_analysis_post(coin, closes, highs, lows):
     sym = coin['symbol'].upper()
@@ -451,24 +366,24 @@ def build_analysis_post(coin, closes, highs, lows):
     if e20 and e50:
         if e20 > e50:
             score += 1
-            reasons.append("EMA20 > EMA50 — bullish trend")
+            reasons.append("EMA20 > EMA50 - bullish trend")
         else:
             score -= 1
-            reasons.append("EMA20 < EMA50 — bearish trend")
+            reasons.append("EMA20 < EMA50 - bearish trend")
 
     if r14 is not None:
         if r14 > 70:
             score -= 1
-            reasons.append(f"RSI {r14:.1f} — overbought")
+            reasons.append(f"RSI {r14:.1f} - overbought")
         elif r14 < 30:
             score += 1
-            reasons.append(f"RSI {r14:.1f} — oversold")
+            reasons.append(f"RSI {r14:.1f} - oversold")
         elif r14 > 50:
             score += 1
-            reasons.append(f"RSI {r14:.1f} — bullish")
+            reasons.append(f"RSI {r14:.1f} - bullish")
         else:
             score -= 1
-            reasons.append(f"RSI {r14:.1f} — bearish")
+            reasons.append(f"RSI {r14:.1f} - bearish")
 
     if m is not None and s is not None:
         if m > s:
@@ -495,7 +410,7 @@ def build_analysis_post(coin, closes, highs, lows):
     elif score >= 1:
         signal = "BUY"
         direction = "BUY"
-        outlook = "Mild bullish bias — watch for confirmation."
+        outlook = "Mild bullish bias - watch for confirmation."
     elif score <= -3:
         signal = "STRONG SELL"
         direction = "SELL"
@@ -503,13 +418,13 @@ def build_analysis_post(coin, closes, highs, lows):
     elif score <= -1:
         signal = "SELL"
         direction = "SELL"
-        outlook = "Mild bearish bias — reduce exposure."
+        outlook = "Mild bearish bias - reduce exposure."
     else:
         signal = "HOLD"
         direction = "HOLD"
-        outlook = "Mixed signals — wait for clarity."
+        outlook = "Mixed signals - wait for clarity."
 
-    trade_section = "No trade setup — wait for clearer signal."
+    trade_section = "No trade setup - wait for clearer signal."
     if direction in ["BUY", "SELL"] and a:
         if direction == "BUY":
             entry = price
@@ -523,34 +438,11 @@ def build_analysis_post(coin, closes, highs, lows):
             tp1, tp2, tp3 = entry - risk*1.5, entry - risk*2.5, entry - risk*4.0
 
         if risk > 0:
-            trade_section = f"""Trade Setup:
-Entry: ${entry:,.4f}
-Stop Loss: ${sl:,.4f} ({(risk/entry)*100:.1f}% risk)
-TP1: ${tp1:,.4f} (RR 1.5x)
-TP2: ${tp2:,.4f} (RR 2.5x)
-TP3: ${tp3:,.4f} (RR 4.0x)"""
+            trade_section = f"Trade Setup:\nEntry: ${entry:,.4f}\nStop Loss: ${sl:,.4f} ({(risk/entry)*100:.1f}% risk)\nTP1: ${tp1:,.4f} (RR 1.5x)\nTP2: ${tp2:,.4f} (RR 2.5x)\nTP3: ${tp3:,.4f} (RR 4.0x)"
 
     opener = random.choice(OPENERS_ANALYSIS)
-    return f"""AI ANALYSIS: ${sym}
+    return f"AI ANALYSIS: ${sym}\n\n{opener}\n\n{coin['name']} - Technical read:\nPrice: ${price:,.4f}\n24h: {change:+.1f}%\n\nIndicators:\n{chr(10).join(reasons)}\n\nSignal: {signal}\n\n{trade_section}\n\nOutlook: {outlook}\n\nNot financial advice. DYOR. Always use stop loss!\n\n${sym}"
 
-{opener}
-
-{coin['name']} — Technical read:
-Price: ${price:,.4f}
-24h: {change:+.1f}%
-
-Indicators:
-{chr(10).join(reasons)}
-
-Signal: {signal}
-
-{trade_section}
-
-Outlook: {outlook}
-
-Not financial advice. DYOR. Always use stop loss!
-
-${sym}"""
 
 def post_to_binance(text, api_key):
     payload = json.dumps({"bodyTextOnly": text}).encode('utf-8')
@@ -574,6 +466,7 @@ def post_to_binance(text, api_key):
             print(e.read().decode()[:300])
         return False
 
+
 def main():
     api_key = os.environ.get("BINANCE_KEY")
     if not api_key:
@@ -582,52 +475,4 @@ def main():
     coins = fetch_market()
     tier_a = [c for c in coins if c['id'] in BINANCE_TIER_A and c.get('price_change_percentage_24h') is not None]
     tier_b = [c for c in coins if c['id'] in BINANCE_TIER_B and c.get('price_change_percentage_24h') is not None]
-    tier_a.sort(key=lambda x: x['price_change_percentage_24h'], reverse=True)
-    tier_b.sort(key=lambda x: x['price_change_percentage_24h'], reverse=True)
-
-    print(f"Tier A: {len(tier_a)} coins | Tier B: {len(tier_b)} coins")
-
-    if len(tier_a) < 3:
-        raise Exception("Not enough Binance Tier A coins found")
-
-    news = fetch_breaking_news()
-    print(f"Fetched {len(news)} crypto news articles (viral first)")
-
-    posts = []
-    used_news_designs = []
-
-    if len(news) >= 1:
-        posts.append(build_news_post(news[0], used_news_designs))
-    else:
-        posts.append(build_gainer_post(tier_a[0]))
-
-    if len(news) >= 2:
-        posts.append(build_news_post(news[1], used_news_designs))
-    else:
-        posts.append(build_gainer_post(tier_a[1]))
-
-    posts.append(build_gainer_post(tier_a[0]))
-    posts.append(build_loser_post(tier_a[-1]))
-
-    potential = [c for c in tier_b if c.get('total_volume', 0) > 5_000_000]
-    random.shuffle(potential)
-    for candidate in potential[:8]:
-        print(f"Trying analysis on: {candidate['name']}")
-        closes, highs, lows = fetch_ohlc(candidate['id'])
-        if closes and len(closes) >= 20:
-            posts.append(build_analysis_post(candidate, closes, highs, lows))
-            print(f"Analysis ready for {candidate['name']}")
-            break
-        time.sleep(1)
-
-    for i, text in enumerate(posts, 1):
-        print(f"\n=== Post {i}/{len(posts)} ===")
-        print(text[:200] + "...")
-        post_to_binance(text, api_key)
-        if i < len(posts):
-            time.sleep(5)
-
-    print(f"\nAll {len(posts)} posts completed!")
-
-if __name__ == "__main__":
-    main()
+    tier_a.sort(key=lambda x: x['price_cha
