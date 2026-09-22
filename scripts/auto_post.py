@@ -3,301 +3,267 @@ import os
 import random
 import time
 import urllib.request
+import mimetypes
+import uuid
+import pandas as pd
+import mplfinance as mpf
 
-BINANCE_TIER_A = {
-    "bitcoin", "ethereum", "binancecoin", "solana", "ripple", "cardano",
-    "dogecoin", "tron", "avalanche-2", "chainlink", "polkadot", "matic-network",
-    "shiba-inu", "litecoin", "uniswap", "stellar", "cosmos", "near",
-    "aptos", "arbitrum", "optimism", "injective-protocol", "sui", "sei-network",
-    "celestia", "filecoin", "the-graph", "aave", "maker", "pepe"
-}
+# ==========================================
+# CONFIG — FALLBACK TOKENS (if API fails)
+# ==========================================
+FALLBACK_SYMBOLS = [
+    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "TRX", "AVAX", "LINK",
+    "DOT", "MATIC", "SHIB", "LTC", "UNI", "ATOM", "NEAR", "APT", "ARB", "OP"
+]
+INTERVALS = ["1h", "4h", "1d"]
 
-BINANCE_TIER_B = BINANCE_TIER_A | {
-    "render-token", "fetch-ai", "immutable-x", "worldcoin-wld",
-    "jupiter-exchange-solana", "pyth-network", "bonk", "dogwifcoin",
-    "floki", "the-sandbox", "decentraland", "axie-infinity", "gala",
-    "enjincoin", "chiliz", "curve-dao-token", "compound-governance-token",
-    "synthetix-network-token", "pancakeswap-token", "lido-dao", "rocket-pool",
-    "frax-share", "convex-finance", "pax-gold", "tether-gold", "havven",
-    "dydx-chain", "gmx", "loopring", "uma", "band-protocol", "ankr",
-    "ocean-protocol", "numeraire", "balancer", "storj", "ravencoin",
-    "horizen", "wax", "iostoken", "kucoin-shares", "bitcoin-cash",
-    "bitcoin-cash-sv", "ethereum-classic", "zcash", "dash", "monero",
-    "neo", "ontology", "qtum", "waves", "iota", "algorand", "flow",
-    "mina-protocol", "klay-token", "osmosis", "kava", "celo", "cronos",
-    "fantom", "harmony", "zilliqa", "icp", "kaspa", "jito-governance-token",
-    "ethena", "pendle", "ondo-finance", "stargate-finance"
-}
-
-
-def ema(prices, period):
-    if len(prices) < period:
-        return None
-    k = 2 / (period + 1)
-    val = sum(prices[:period]) / period
-    for p in prices[period:]:
-        val = p * k + val * (1 - k)
-    return val
-
-
-def rsi(prices, period=14):
-    if len(prices) < period + 1:
-        return None
-    gains = 0
-    losses = 0
-    for i in range(1, period + 1):
-        diff = prices[i] - prices[i-1]
-        if diff > 0:
-            gains += diff
-        else:
-            losses += abs(diff)
-    avg_gain = gains / period
-    avg_loss = losses / period
-    if avg_loss == 0:
-        return 100
-    rs = avg_gain / avg_loss
-    rsi_val = 100 - (100 / (1 + rs))
-    for i in range(period + 1, len(prices)):
-        diff = prices[i] - prices[i-1]
-        gain = diff if diff > 0 else 0
-        loss = abs(diff) if diff < 0 else 0
-        avg_gain = (avg_gain * (period - 1) + gain) / period
-        avg_loss = (avg_loss * (period - 1) + loss) / period
-        if avg_loss == 0:
-            rsi_val = 100
-        else:
-            rs = avg_gain / avg_loss
-            rsi_val = 100 - (100 / (1 + rs))
-    return rsi_val
-
-
-def macd(prices):
-    if len(prices) < 35:
-        return None, None, None
-    e12 = ema(prices, 12)
-    e26 = ema(prices, 26)
-    if e12 is None or e26 is None:
-        return None, None, None
-    macd_line = e12 - e26
-    series = []
-    for i in range(26, len(prices)):
-        a = ema(prices[:i+1], 12)
-        b = ema(prices[:i+1], 26)
-        if a and b:
-            series.append(a - b)
-    if len(series) < 9:
-        return macd_line, None, None
-    sig = ema(series, 9)
-    if sig is None:
-        return macd_line, None, None
-    return macd_line, sig, macd_line - sig
-
-
-def bollinger(prices, period=20, sd=2):
-    if len(prices) < period:
-        return None, None, None
-    recent = prices[-period:]
-    sma = sum(recent) / period
-    var = sum((p - sma) ** 2 for p in recent) / period
-    std = var ** 0.5
-    return sma + sd*std, sma, sma - sd*std
-
-
-def atr(highs, lows, closes, period=14):
-    if len(closes) < period + 1:
-        return None
-    trs = []
-    for i in range(1, len(closes)):
-        trs.append(max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1])))
-    if len(trs) < period:
-        return None
-    val = sum(trs[:period]) / period
-    for tr in trs[period:]:
-        val = (val * (period - 1) + tr) / period
-    return val
-
-
-def fetch_market():
-    url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&price_change_percentage=24h"
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req) as r:
-        return json.loads(r.read())
-
-
-def fetch_ohlc(coin_id):
+# ==========================================
+# FETCH TOP GAINERS & LOSERS FROM BINANCE
+# ==========================================
+def fetch_gainers_losers():
+    """Fetch top 10 gainers and losers from Binance 24h ticker."""
     try:
-        url = "https://api.coingecko.com/api/v3/coins/" + coin_id + "/ohlc?vs_currency=usd&days=1"
+        url = "https://data-api.binance.vision/api/v3/ticker/24hr"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as r:
             data = json.loads(r.read())
-        return [c[4] for c in data], [c[2] for c in data], [c[3] for c in data]
+        
+        # Filter USDT pairs and sort by price change
+        usdt_pairs = [t for t in data if t['symbol'].endswith('USDT') and float(t['quoteVolume']) > 1000000]
+        sorted_pairs = sorted(usdt_pairs, key=lambda x: float(x['priceChangePercent']), reverse=True)
+        
+        gainers = [t['symbol'].replace('USDT', '') for t in sorted_pairs[:10]]
+        losers = [t['symbol'].replace('USDT', '') for t in sorted_pairs[-10:]]
+        
+        print(f"📈 Top Gainers: {gainers}")
+        print(f"📉 Top Losers: {losers}")
+        return gainers, losers
     except Exception as e:
-        print("OHLC failed for " + coin_id + ": " + str(e))
-        return None, None, None
+        print(f"⚠️ Failed to fetch gainers/losers: {e}")
+        return [], []
 
-    
+# ==========================================
+# FETCH NEW LISTINGS FROM BINANCE ANNOUNCEMENTS
+# ==========================================
+def fetch_new_listings():
+    """Fetch recent new listings from Binance announcements."""
+    try:
+        # Use the public announcements API
+        url = "https://www.binance.com/bapi/apex/v1/public/apex/cms/announcement/list"
+        payload = json.dumps({
+            "catalogId": 48,  # New listings catalog
+            "page": 1,
+            "pageSize": 10
+        }).encode()
+        
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                'User-Agent': 'Mozilla/5.0',
+                'Content-Type': 'application/json'
+            },
+            method='POST'
+        )
+        with urllib.request.urlopen(req) as r:
+            data = json.loads(r.read())
+        
+        listings = []
+        if 'data' in data and 'catalogs' in data['data']:
+            for item in data['data']['catalogs'][:10]:
+                title = item.get('title', '')
+                # Extract token from title like "Binance Will List XXX (XXX)"
+                if '(' in title:
+                    token = title.split('(')[-1].replace(')', '').strip()
+                    if token.isalpha() and len(token) <= 10:
+                        listings.append(token.upper())
+        
+        print(f"🆕 New Listings: {listings}")
+        return listings
+    except Exception as e:
+        print(f"⚠️ Failed to fetch new listings: {e}")
+        return []
 
-OPENERS_GAINER = [
-    "Yo yo yo!!! Look at this ROCKET!!!",
-    "Wassup traders!! You're NOT gonna believe this!",
-    "Legends!! Eyes on this one RIGHT NOW!",
-    "Hey hey hey!! The bulls are BACK!!"
-]
+# ==========================================
+# SMA CALCULATOR
+# ==========================================
+def calc_sma(prices, period):
+    if len(prices) < period:
+        return None
+    return sum(prices[-period:]) / period
 
-REASONS_GAINER = [
-    ["Strong buying pressure from whales", "Broke through key resistance level", "Positive sentiment across the market", "Momentum traders piling in"],
-    ["Whale wallets accumulating aggressively", "Flipped resistance into support", "Network activity hitting new highs", "Traders rotating into this play"],
-    ["Volume EXPLODING on the charts", "Broke out of consolidation zone", "Social buzz going crazy", "Momentum shifting bullish"]
-]
+def get_sma_insight(closes):
+    sma20 = calc_sma(closes, 20) if len(closes) >= 20 else None
+    sma50 = calc_sma(closes, 50) if len(closes) >= 50 else None
+    sma200 = calc_sma(closes, 200) if len(closes) >= 200 else None
+    price = closes[-1]
 
-CLOSERS_GAINER = [
-    "Don't chase green candles fam - wait for a pullback!",
-    "Don't FOMO at the top fam - patience pays!",
-    "Manage your risk and set those stops!"
-]
-
-OPENERS_LOSER = [
-    "Ouch fam!! This one is hurting today!",
-    "Hey fam!! This one got REKT today!",
-    "Yo traders!! Red alert incoming!",
-    "Legends!! Not a pretty picture today!"
-]
-
-REASONS_LOSER = [
-    ["Whales taking profits", "Broke key support level", "General market weakness", "Exchange inflows spiking"],
-    ["Major whale exit spotted", "Lost critical support", "Staking rewards sell-off pressure", "Correlation to broader alt weakness"],
-    ["Profit-taking after recent run", "Weak sentiment across alts", "Failed to hold key level", "Sell pressure building up"]
-]
-
-CLOSERS_LOSER = [
-    "Do NOT panic sell! Smart money buys fear!",
-    "Do NOT panic sell! Dips can be opportunities!",
-    "Stay patient fam - this too shall pass!"
-]
-
-
-def build_gainer_post(coin):
-    opener = random.choice(OPENERS_GAINER)
-    reasons = random.choice(REASONS_GAINER)
-    closer = random.choice(CLOSERS_GAINER)
-    sym = coin['symbol'].upper()
-    chg = coin['price_change_percentage_24h']
-    price = coin['current_price']
-    high = coin.get('high_24h', price * 1.05)
-    reasons_text = "\n".join(["✅ " + r for r in reasons])
-    next_up = price * 1.10
-    next_down = price * 0.95
-    return "🚀🚀🚀 TOP GAINER ALERT 🚀🚀🚀\n\n" + opener + " 🔥🔥🔥\n\n$" + sym + " is absolutely FLYING today! 📈📈\n\n📊 The Numbers:\n💰 Price: $" + str(round(price, 4)) + "\n📈 24h Gain: +" + str(round(chg, 1)) + "% 🔥\n\n🧠 Why It Pumped:\n" + reasons_text + "\n\n📊 Next Move:\n🎯 If it holds above $" + str(round(price, 2)) + " → could target $" + str(round(next_up, 2)) + " 🚀\n⚠️ If it rejects here → pullback to $" + str(round(next_down, 2)) + " possible 📉\n💎 Watch volume - high volume = continuation\n\n🛡️ " + closer + "\n\n⚠️ DYOR, NFA! 💎🙌\n\n$" + sym + " 🪙🚀"
-
-
-def build_loser_post(coin):
-    opener = random.choice(OPENERS_LOSER)
-    reasons = random.choice(REASONS_LOSER)
-    closer = random.choice(CLOSERS_LOSER)
-    sym = coin['symbol'].upper()
-    chg = abs(coin['price_change_percentage_24h'])
-    price = coin['current_price']
-    reasons_text = "\n".join(["❌ " + r for r in reasons])
-    bounce = price * 1.06
-    next_support = price * 0.93
-    return "⚠️⚠️⚠️ TOP LOSER ALERT ⚠️⚠️⚠️\n\n" + opener + " 😬📉\n\n$" + sym + " is getting hammered! 💔\n\n📊 The Damage:\n💰 Price: $" + str(round(price, 4)) + "\n📉 24h Drop: -" + str(round(chg, 1)) + "% 💀\n\n🧠 Why It Dumped:\n" + reasons_text + "\n\n📊 Next Move:\n🎯 If $" + str(round(price, 2)) + " holds → bounce to $" + str(round(bounce, 2)) + " possible 💪\n⚠️ If it breaks → next support at $" + str(round(next_support, 2)) + " 📉\n🔍 Watch BTC - if BTC dumps, this follows\n\n🛡️ " + closer + "\n\n⚠️ DYOR, NFA! 🙏\n\n$" + sym + " 🪙"
-
-
-def analyze_coin(coin, closes, highs, lows):
-    price = coin['current_price']
-    e20 = ema(closes, 20) if len(closes) >= 20 else None
-    e50 = ema(closes, 50) if len(closes) >= 50 else None
-    r14 = rsi(closes, 14) if len(closes) >= 15 else None
-    m, s, h = macd(closes)
-    bu, bm, bl = bollinger(closes) if len(closes) >= 20 else (None, None, None)
-    a = atr(highs, lows, closes, 14)
-    score = 0
-    reasons = []
-    if e20 and e50:
-        if e20 > e50:
-            score += 1
-            reasons.append("✅ EMA20 > EMA50 - bullish trend 📈")
+    insights = []
+    if sma20 and sma50:
+        if sma20 > sma50:
+            insights.append("SMA20 > SMA50 — bullish crossover 📈")
         else:
-            score -= 1
-            reasons.append("📉 EMA20 < EMA50 - bearish trend")
-    if r14 is not None:
-        if r14 > 70:
-            score -= 1
-            reasons.append("⚠️ RSI " + str(round(r14, 1)) + " - overbought")
-        elif r14 < 30:
-            score += 1
-            reasons.append("💎 RSI " + str(round(r14, 1)) + " - oversold")
-        elif r14 > 50:
-            score += 1
-            reasons.append("✅ RSI " + str(round(r14, 1)) + " - bullish momentum 💪")
+            insights.append("SMA20 < SMA50 — bearish crossover 📉")
+    if sma50 and sma200:
+        if sma50 > sma200:
+            insights.append("Golden cross confirmed 🥇")
         else:
-            score -= 1
-            reasons.append("🔻 RSI " + str(round(r14, 1)) + " - bearish")
-    if m is not None and s is not None:
-        if m > s:
-            score += 1
-            reasons.append("🚀 MACD bullish crossover confirmed")
+            insights.append("Death cross active ⚰️")
+    if sma20:
+        if price > sma20:
+            insights.append(f"price above SMA20 (${round(sma20, 4)}) 🟢")
         else:
-            score -= 1
-            reasons.append("📉 MACD bearish crossover")
-    if bu and bl:
-        if price > bu:
-            score -= 1
-            reasons.append("⚠️ Above upper Bollinger Band - overextended")
-        elif price < bl:
-            score += 1
-            reasons.append("💎 Below lower Bollinger Band - oversold zone")
+            insights.append(f"price below SMA20 (${round(sma20, 4)}) 🔴")
+    if sma50:
+        if price > sma50:
+            insights.append(f"holding above SMA50 (${round(sma50, 4)}) 🛡️")
         else:
-            reasons.append("📊 Price inside Bollinger Bands - neutral")
-    return score, reasons, a
+            insights.append(f"rejected at SMA50 (${round(sma50, 4)}) ⚠️")
 
+    return random.choice(insights) if insights else "watching key levels 👀"
 
-def build_analysis_post(coin, closes, highs, lows):
-    sym = coin['symbol'].upper()
-    price = coin['current_price']
-    change = coin['price_change_percentage_24h']
-    high = coin.get('high_24h', price * 1.05)
-    low = coin.get('low_24h', price * 0.95)
-    score, reasons, a = analyze_coin(coin, closes, highs, lows)
-    if score >= 3:
-        signal = "🟢🟢🟢 SIGNAL: STRONG BUY 🟢🟢🟢"
-        direction = "BUY"
-    elif score >= 1:
-        signal = "🟢 SIGNAL: BUY 🟢"
-        direction = "BUY"
-    elif score <= -3:
-        signal = "🔴🔴🔴 SIGNAL: STRONG SELL 🔴🔴🔴"
-        direction = "SELL"
-    elif score <= -1:
-        signal = "🔴 SIGNAL: SELL 🔴"
-        direction = "SELL"
-    else:
-        signal = "🟡 SIGNAL: HOLD 🟡"
-        direction = "HOLD"
-    trade_section = "⏸️ No trade setup at the moment - waiting for clearer signal"
-    if direction in ["BUY", "SELL"] and a:
-        if direction == "BUY":
-            entry = price
-            sl = max(entry - 1.5*a, min(lows[-10:]) * 0.99 if len(lows) >= 10 else entry * 0.95)
-            risk = entry - sl
-            tp1 = entry + risk*1.5
-            tp2 = entry + risk*2.5
-            tp3 = entry + risk*4.0
-        else:
-            entry = price
-            sl = min(entry + 1.5*a, max(highs[-10:]) * 1.01 if len(highs) >= 10 else entry * 1.05)
-            risk = sl - entry
-            tp1 = entry - risk*1.5
-            tp2 = entry - risk*2.5
-            tp3 = entry - risk*4.0
-        if risk > 0:
-            trade_section = "🎯🎯 TRADE SETUP 🎯🎯\n📍 Entry: $" + str(round(entry, 4)) + "\n🛑 Stop Loss: $" + str(round(sl, 4)) + " (" + str(round((risk/entry)*100, 1)) + "% risk)\n✅ TP1: $" + str(round(tp1, 4)) + " (RR 1.5x) 🎯\n✅ TP2: $" + str(round(tp2, 4)) + " (RR 2.5x) 🎯\n✅ TP3: $" + str(round(tp3, 4)) + " (RR 4.0x) 🎯"
-    reasons_text = "\n".join(reasons)
-    return "🤖🤖 AI ANALYSIS ALERT 🤖🤖\n\n🎯 High-Conviction Setup Detected!\n\nLegends! My algo scanned 30+ coins and found a signal on:\n\n💎 $" + sym + " 💎\n\n💰 Price: $" + str(round(price, 4)) + "\n📊 24h: " + str(round(change, 1)) + "%\n📈 24h High: $" + str(round(high, 4)) + "\n📉 24h Low: $" + str(round(low, 4)) + "\n\n📐 Technical Indicators:\n" + reasons_text + "\n\n" + signal + "\n\n" + trade_section + "\n\n⚠️⚠️ DISCLAIMER: Not financial advice! DYOR! Always use stop loss! 🛡️\n\n🚀 Let's get it, fam! 💎🙌\n\n$" + sym + " 🪙📈"
+# ==========================================
+# RANDOM ZOETOSHI TEXT
+# ==========================================
+def generate_random_text(symbol, price, support, tp, sl, sma_insight):
+    templates = [
+        f"${symbol} at crucial support 🛡️\n\n{sma_insight}\n\nlonged at cmp. SL ${sl} 🛑 TP ${tp} 🎯\n\nsmall size. nfa. ${symbol}",
+        f"${symbol} ending accumulation ⏳\n\n{sma_insight}\n\nspot buy zone: ${support} - ${round(price, 2)} 🟢\n\ntargets: ${tp} then ${round(tp*1.1, 2)} 🎯\n\nnfa. ${symbol}",
+        f"Looking at the chart, ${symbol} is setting up 🎯\n\n{sma_insight}\n\nSL ${sl} 🛑 TP ${tp} 🚀\n\nsmall size. nfa.",
+        f"Noticing something on ${symbol} 👀\n\n{sma_insight}\n\nentry around ${round(price, 2)} 🎯\n\nSL ${sl} 🛑 TP ${tp} 🚀\n\nnfa.",
+        f"Watching ${symbol} closely 📊\n\n{sma_insight}\n\ni am long. SL ${sl} 🛑 TP ${tp} 🎯\n\nnfa.",
+        f"Accumulation phase almost over ⏳\n\n{sma_insight}\n\nspot buy zone: ${support} - ${round(price, 2)} 🟢\n\ntargets: ${tp} 🎯\n\nnfa. ${symbol}",
+        f"Giga pump incoming 🚀\n\n{sma_insight}\n\nexpecting dip to ${support} first 📉\n\nthen breakout to ${tp} 🎯\n\nnfa. ${symbol}",
+        f"Higher lows forming on ${symbol} ✅\n\n{sma_insight}\n\nbuy zone: ${support} - ${round(price, 2)} 🟢\n\ntarget: ${tp} 🎯\n\nnfa.",
+        f"Bullish structure intact on ${symbol} 📈\n\n{sma_insight}\n\nlonged at cmp. SL ${sl} 🛑 TP ${tp} 🎯\n\nuse small size. nfa.",
+        f"Back at demand zone 💎\n\n${symbol} — {sma_insight}\n\nspot buy: ${support} - ${round(price, 2)} 🟢\n\ntarget: ${tp} 🎯\n\nnfa.",
+        f"Setting up nicely 🎯\n\n${symbol} {sma_insight}\n\nbreakout soon → ${tp} 🚀\n\nSL ${sl} 🛑\n\nnfa.",
+        f"This one on my radar 👀\n\n${symbol} at key support 🛡️\n\n{sma_insight}\n\nif it holds → ${tp} next 🎯\n\nnfa.",
+        f"Primed for a move 🎯\n\nentry on ${symbol}: ${round(price, 2)} 🟢\n\n{sma_insight}\n\nSL ${sl} 🛑 TP ${tp} 🚀\n\nnfa.",
+        f"About to explode 💥\n\n${symbol} {sma_insight}\n\nSL ${sl} 🛑 TP ${tp} 🎯\n\nnfa.",
+        f"Key level being tested 🚧\n\n${symbol} {sma_insight}\n\nif we break → ${tp} 🚀\n\nSL ${sl} 🛑\n\nnfa."
+    ]
+    return random.choice(templates)
 
+# ==========================================
+# FETCH KLINES FROM BINANCE
+# ==========================================
+def fetch_klines(symbol, interval):
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}USDT&interval={interval}&limit=210"
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req) as r:
+        data = json.loads(r.read())
+    df = pd.DataFrame(data, columns=[
+        'time', 'open', 'high', 'low', 'close', 'volume',
+        'close_time', 'qav', 'num_trades', 'taker_base', 'taker_quote', 'ignore'
+    ])
+    df['time'] = pd.to_datetime(df['time'], unit='ms')
+    df.set_index('time', inplace=True)
+    df = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
+    return df
 
-def post_to_binance(text, api_key):
-    payload = json.dumps({"bodyTextOnly": text}).encode('utf-8')
+# ==========================================
+# RANDOM CHART STYLE + SMA OVERLAY
+# ==========================================
+def generate_chart(symbol, support, tp, sl, interval):
+    try:
+        df = fetch_klines(symbol, interval)
+        
+        # Random chart style per post
+        styles = ['nightclouds', 'yahoo', 'charles', 'binance', 'blueskies', 'starsandstripes']
+        chosen_style = random.choice(styles)
+
+        my_style = mpf.make_mpf_style(
+            base_mpf_style=chosen_style,
+            marketcolors=mpf.make_marketcolors(up='#00ff00', down='#ff0000', inherit=True),
+            gridstyle='--',
+            gridcolor='#333333'
+        )
+
+        hlines_config = dict(
+            hlines=[support, tp, sl],
+            colors=['green', 'blue', 'red'],
+            linestyle='--',
+            linewidths=1.5,
+            alpha=0.8
+        )
+
+        # SMA overlays
+        sma20 = df['close'].rolling(20).mean()
+        sma50 = df['close'].rolling(50).mean()
+
+        adds = [
+            mpf.make_addplot(sma20, color='yellow', width=1, label='SMA20'),
+            mpf.make_addplot(sma50, color='orange', width=1, label='SMA50'),
+        ]
+
+        filename = f"{symbol}_chart_{random.randint(1, 9999)}.png"
+        mpf.plot(
+            df, type='candle', style=my_style,
+            title=f"\n{symbol}/USDT - {interval}",
+            ylabel='Price', volume=True,
+            hlines=hlines_config,
+            addplot=adds,
+            savefig=dict(fname=filename, dpi=100, bbox_inches='tight')
+        )
+        print(f"📈 Chart saved: {filename} (style: {chosen_style}, interval: {interval})")
+        return filename
+    except Exception as e:
+        print(f"❌ Chart failed for {symbol}: {e}")
+        return None
+
+# ==========================================
+# BINANCE UPLOAD IMAGE
+# ==========================================
+def upload_image(image_path, api_key):
+    boundary = uuid.uuid4().hex
+    with open(image_path, 'rb') as f:
+        file_data = f.read()
+
+    filename = os.path.basename(image_path)
+    content_type = mimetypes.guess_type(filename)[0] or 'image/png'
+
+    body = []
+    body.append(f'--{boundary}'.encode())
+    body.append(f'Content-Disposition: form-data; name="file"; filename="{filename}"'.encode())
+    body.append(f'Content-Type: {content_type}'.encode())
+    body.append(b'')
+    body.append(file_data)
+    body.append(f'--{boundary}--'.encode())
+    body.append(b'')
+    payload = b'\r\n'.join(body)
+
+    req = urllib.request.Request(
+        'https://www.binance.com/bapi/composite/v1/public/pgc/openApi/image/upload',
+        data=payload,
+        headers={
+            'X-Square-OpenAPI-Key': api_key,
+            'Content-Type': f'multipart/form-data; boundary={boundary}',
+            'clienttype': 'binanceSkill'
+        },
+        method='POST'
+    )
+    try:
+        with urllib.request.urlopen(req) as r:
+            res = json.loads(r.read())
+            url = res.get('data', {}).get('url')
+            print(f"✅ Image uploaded: {url}")
+            return url
+    except Exception as e:
+        print("❌ UPLOAD ERROR: " + str(e))
+        if hasattr(e, 'read'):
+            print(e.read().decode()[:300])
+        return None
+
+# ==========================================
+# BINANCE POST
+# ==========================================
+def post_to_binance(text, image_url, api_key):
+    payload = json.dumps({
+        "bodyTextOnly": text,
+        "imageUrl": image_url
+    }).encode('utf-8')
+
     req = urllib.request.Request(
         'https://www.binance.com/bapi/composite/v1/public/pgc/openApi/content/add',
         data=payload,
@@ -310,61 +276,80 @@ def post_to_binance(text, api_key):
     )
     try:
         with urllib.request.urlopen(req) as r:
-            print("POST SUCCESS: " + r.read().decode()[:200])
+            print("🚀 POST SUCCESS: " + r.read().decode()[:200])
             return True
     except Exception as e:
-        print("POST ERROR: " + str(e))
+        print("❌ POST ERROR: " + str(e))
         if hasattr(e, 'read'):
             print(e.read().decode()[:300])
         return False
 
-
+# ==========================================
+# MAIN
+# ==========================================
 def main():
     api_key = os.environ.get("BINANCE_KEY")
     if not api_key:
         raise Exception("BINANCE_KEY secret is missing")
-    coins = fetch_market()
-    tier_a = [c for c in coins if c['id'] in BINANCE_TIER_A and c.get('price_change_percentage_24h') is not None]
-    tier_b = [c for c in coins if c['id'] in BINANCE_TIER_B and c.get('price_change_percentage_24h') is not None]
-    tier_a.sort(key=lambda x: x['price_change_percentage_24h'], reverse=True)
-    tier_b.sort(key=lambda x: x['price_change_percentage_24h'], reverse=True)
-    print("Tier A: " + str(len(tier_a)) + " | Tier B: " + str(len(tier_b)))
-    if len(tier_a) < 5:
-        raise Exception("Not enough Binance Tier A coins found")
-    posts = []
-    used_coin_ids = set()
-    gainer = next((c for c in tier_a if c['id'] not in used_coin_ids), tier_a[0])
-    posts.append(build_gainer_post(gainer))
-    used_coin_ids.add(gainer['id'])
-    print("Post 1: Gainer " + gainer['symbol'].upper())
-    loser = next((c for c in reversed(tier_a) if c['id'] not in used_coin_ids), tier_a[-1])
-    posts.append(build_loser_post(loser))
-    used_coin_ids.add(loser['id'])
-    print("Post 2: Loser " + loser['symbol'].upper())
-    potential = [c for c in tier_b if c.get('total_volume', 0) > 5000000 and c['id'] not in used_coin_ids]
-    random.shuffle(potential)
-    best_coin = None
-    best_score = -99
-    for candidate in potential[:15]:
-        closes, highs, lows = fetch_ohlc(candidate['id'])
-        if closes and len(closes) >= 20:
-            score, _, _ = analyze_coin(candidate, closes, highs, lows)
-            print("Analysis scan: " + candidate['symbol'].upper() + " score=" + str(score))
-            if score > best_score:
-                best_score = score
-                best_coin = (candidate, closes, highs, lows)
-        time.sleep(1)
-    if best_coin:
-        coin, closes, highs, lows = best_coin
-        posts.append(build_analysis_post(coin, closes, highs, lows))
-        print("Post 3: Analysis " + coin['symbol'].upper() + " (score " + str(best_score) + ")")
-    for i, text in enumerate(posts, 1):
-        print("\n=== Post " + str(i) + "/" + str(len(posts)) + " ===")
-        post_to_binance(text, api_key)
-        if i < len(posts):
-            time.sleep(5)
-    print("\nAll " + str(len(posts)) + " posts completed")
 
+    print("--- Starting Zoetoshi Automation ---")
+    
+    # Fetch dynamic tokens from Binance
+    gainers, losers = fetch_gainers_losers()
+    new_listings = fetch_new_listings()
+    
+    # Build the pool: gainers + losers + new listings + fallback
+    token_pool = list(set(gainers + losers + new_listings + FALLBACK_SYMBOLS))
+    token_pool = [t for t in token_pool if t.isalpha() and len(t) <= 10]
+    
+    print(f"🎯 Token pool size: {len(token_pool)}")
+    used_tokens = []
+
+    for i in range(2):
+        available = [s for s in token_pool if s not in used_tokens]
+        if not available:
+            available = FALLBACK_SYMBOLS
+        symbol = random.choice(available)
+        used_tokens.append(symbol)
+
+        interval = random.choice(INTERVALS)
+
+        try:
+            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as r:
+                price = float(json.loads(r.read())['price'])
+        except Exception as e:
+            print(f"⚠️ Skipping {symbol}: {e}")
+            continue
+
+        # Fetch closes to calculate real SMA insight
+        try:
+            df = fetch_klines(symbol, interval)
+            closes = df['close'].tolist()
+            sma_insight = get_sma_insight(closes)
+        except Exception:
+            sma_insight = "watching key levels 👀"
+
+        # Random levels
+        support = round(price * random.uniform(0.88, 0.96), 4)
+        tp = round(price * random.uniform(1.08, 1.30), 4)
+        sl = round(support * random.uniform(0.96, 0.99), 4)
+
+        print(f"\n--- Post {i+1}/2 for ${symbol} ({interval}) ---")
+
+        text = generate_random_text(symbol, price, support, tp, sl, sma_insight)
+        print(text)
+
+        chart = generate_chart(symbol, support, tp, sl, interval)
+
+        if chart:
+            image_url = upload_image(chart, api_key)
+            if image_url:
+                post_to_binance(text, image_url, api_key)
+
+        if i < 1:
+            time.sleep(10)
 
 if __name__ == "__main__":
     main()
