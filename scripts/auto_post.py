@@ -9,32 +9,40 @@ import pandas as pd
 import mplfinance as mpf
 
 # ==========================================
-# CONFIG — FALLBACK TOKENS (if API fails)
+# CONFIG — FALLBACK TOKENS (used if API fails)
 # ==========================================
 FALLBACK_SYMBOLS = [
     "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "TRX", "AVAX", "LINK",
-    "DOT", "MATIC", "SHIB", "LTC", "UNI", "ATOM", "NEAR", "APT", "ARB", "OP"
+    "DOT", "MATIC", "SHIB", "LTC", "UNI", "ATOM", "NEAR", "APT", "ARB", "OP",
+    "INJ", "SUI", "SEI", "TIA", "FIL", "GRT", "AAVE", "MKR", "PEPE", "RNDR",
+    "FET", "IMX", "WLD", "JUP", "PYTH", "BONK", "WIF", "FLOKI", "SAND", "MANA"
 ]
 INTERVALS = ["1h", "4h", "1d"]
+BINANCE_DATA_API = "https://data-api.binance.vision"
 
 # ==========================================
-# FETCH TOP GAINERS & LOSERS FROM BINANCE
+# FETCH TOP GAINERS & LOSERS
 # ==========================================
 def fetch_gainers_losers():
-    """Fetch top 10 gainers and losers from Binance 24h ticker."""
     try:
-        url = "https://data-api.binance.vision/api/v3/ticker/24hr"
+        url = f"{BINANCE_DATA_API}/api/v3/ticker/24hr"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as r:
             data = json.loads(r.read())
-        
-        # Filter USDT pairs and sort by price change
-        usdt_pairs = [t for t in data if t['symbol'].endswith('USDT') and float(t['quoteVolume']) > 1000000]
+
+        usdt_pairs = [
+            t for t in data
+            if t['symbol'].endswith('USDT') and float(t.get('quoteVolume', 0)) > 5000000
+        ]
+
         sorted_pairs = sorted(usdt_pairs, key=lambda x: float(x['priceChangePercent']), reverse=True)
-        
-        gainers = [t['symbol'].replace('USDT', '') for t in sorted_pairs[:10]]
-        losers = [t['symbol'].replace('USDT', '') for t in sorted_pairs[-10:]]
-        
+
+        stablecoins = {'USDC', 'FDUSD', 'TUSD', 'BUSD', 'DAI', 'USDP'}
+        gainers = [t['symbol'].replace('USDT', '') for t in sorted_pairs[:15]]
+        losers = [t['symbol'].replace('USDT', '') for t in sorted_pairs[-15:]]
+        gainers = [g for g in gainers if g not in stablecoins]
+        losers = [l for l in losers if l not in stablecoins]
+
         print(f"📈 Top Gainers: {gainers}")
         print(f"📉 Top Losers: {losers}")
         return gainers, losers
@@ -43,46 +51,12 @@ def fetch_gainers_losers():
         return [], []
 
 # ==========================================
-# FETCH NEW LISTINGS FROM BINANCE ANNOUNCEMENTS
+# NEW LISTINGS (Manual Fallback)
 # ==========================================
 def fetch_new_listings():
-    """Fetch recent new listings from Binance announcements."""
-    try:
-        # Use the public announcements API
-        url = "https://www.binance.com/bapi/apex/v1/public/apex/cms/announcement/list"
-        payload = json.dumps({
-            "catalogId": 48,  # New listings catalog
-            "page": 1,
-            "pageSize": 10
-        }).encode()
-        
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={
-                'User-Agent': 'Mozilla/5.0',
-                'Content-Type': 'application/json'
-            },
-            method='POST'
-        )
-        with urllib.request.urlopen(req) as r:
-            data = json.loads(r.read())
-        
-        listings = []
-        if 'data' in data and 'catalogs' in data['data']:
-            for item in data['data']['catalogs'][:10]:
-                title = item.get('title', '')
-                # Extract token from title like "Binance Will List XXX (XXX)"
-                if '(' in title:
-                    token = title.split('(')[-1].replace(')', '').strip()
-                    if token.isalpha() and len(token) <= 10:
-                        listings.append(token.upper())
-        
-        print(f"🆕 New Listings: {listings}")
-        return listings
-    except Exception as e:
-        print(f"⚠️ Failed to fetch new listings: {e}")
-        return []
+    new_listings = ["WIF", "BONK", "JUP", "PYTH", "STRK", "DYM", "MANTA", "ALT", "PIXEL", "PORTAL"]
+    print(f"🆕 New Listings (manual): {new_listings}")
+    return new_listings
 
 # ==========================================
 # SMA CALCULATOR
@@ -100,25 +74,15 @@ def get_sma_insight(closes):
 
     insights = []
     if sma20 and sma50:
-        if sma20 > sma50:
-            insights.append("SMA20 > SMA50 — bullish crossover 📈")
-        else:
-            insights.append("SMA20 < SMA50 — bearish crossover 📉")
+        insights.append("SMA20 > SMA50 — bullish crossover 📈" if sma20 > sma50 else "SMA20 < SMA50 — bearish crossover 📉")
     if sma50 and sma200:
-        if sma50 > sma200:
-            insights.append("Golden cross confirmed 🥇")
-        else:
-            insights.append("Death cross active ⚰️")
+        insights.append("Golden cross confirmed 🥇" if sma50 > sma200 else "Death cross active ⚰️")
     if sma20:
-        if price > sma20:
-            insights.append(f"price above SMA20 (${round(sma20, 4)}) 🟢")
-        else:
-            insights.append(f"price below SMA20 (${round(sma20, 4)}) 🔴")
+        insights.append(f"price above SMA20 (${round(sma20, 4)}) 🟢" if price > sma20 else f"price below SMA20 (${round(sma20, 4)}) 🔴")
     if sma50:
-        if price > sma50:
-            insights.append(f"holding above SMA50 (${round(sma50, 4)}) 🛡️")
-        else:
-            insights.append(f"rejected at SMA50 (${round(sma50, 4)}) ⚠️")
+        insights.append(f"holding above SMA50 (${round(sma50, 4)}) 🛡️" if price > sma50 else f"rejected at SMA50 (${round(sma50, 4)}) ⚠️")
+    if sma200:
+        insights.append(f"above SMA200 (${round(sma200, 4)}) — long-term bullish 🚀" if price > sma200 else f"below SMA200 (${round(sma200, 4)}) — long-term bearish 📉")
 
     return random.choice(insights) if insights else "watching key levels 👀"
 
@@ -146,10 +110,10 @@ def generate_random_text(symbol, price, support, tp, sl, sma_insight):
     return random.choice(templates)
 
 # ==========================================
-# FETCH KLINES FROM BINANCE
+# FETCH KLINES
 # ==========================================
 def fetch_klines(symbol, interval):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}USDT&interval={interval}&limit=210"
+    url = f"{BINANCE_DATA_API}/api/v3/klines?symbol={symbol}USDT&interval={interval}&limit=210"
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req) as r:
         data = json.loads(r.read())
@@ -163,13 +127,12 @@ def fetch_klines(symbol, interval):
     return df
 
 # ==========================================
-# RANDOM CHART STYLE + SMA OVERLAY
+# CHART GENERATOR
 # ==========================================
 def generate_chart(symbol, support, tp, sl, interval):
     try:
         df = fetch_klines(symbol, interval)
-        
-        # Random chart style per post
+
         styles = ['nightclouds', 'yahoo', 'charles', 'binance', 'blueskies', 'starsandstripes']
         chosen_style = random.choice(styles)
 
@@ -188,7 +151,6 @@ def generate_chart(symbol, support, tp, sl, interval):
             alpha=0.8
         )
 
-        # SMA overlays
         sma20 = df['close'].rolling(20).mean()
         sma50 = df['close'].rolling(50).mean()
 
@@ -213,7 +175,7 @@ def generate_chart(symbol, support, tp, sl, interval):
         return None
 
 # ==========================================
-# BINANCE UPLOAD IMAGE
+# BINANCE IMAGE UPLOAD
 # ==========================================
 def upload_image(image_path, api_key):
     boundary = uuid.uuid4().hex
@@ -293,15 +255,13 @@ def main():
         raise Exception("BINANCE_KEY secret is missing")
 
     print("--- Starting Zoetoshi Automation ---")
-    
-    # Fetch dynamic tokens from Binance
+
     gainers, losers = fetch_gainers_losers()
     new_listings = fetch_new_listings()
-    
-    # Build the pool: gainers + losers + new listings + fallback
+
     token_pool = list(set(gainers + losers + new_listings + FALLBACK_SYMBOLS))
-    token_pool = [t for t in token_pool if t.isalpha() and len(t) <= 10]
-    
+    token_pool = [t for t in token_pool if t.isalpha() and 2 <= len(t) <= 10]
+
     print(f"🎯 Token pool size: {len(token_pool)}")
     used_tokens = []
 
@@ -315,7 +275,7 @@ def main():
         interval = random.choice(INTERVALS)
 
         try:
-            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
+            url = f"{BINANCE_DATA_API}/api/v3/ticker/price?symbol={symbol}USDT"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req) as r:
                 price = float(json.loads(r.read())['price'])
@@ -323,7 +283,6 @@ def main():
             print(f"⚠️ Skipping {symbol}: {e}")
             continue
 
-        # Fetch closes to calculate real SMA insight
         try:
             df = fetch_klines(symbol, interval)
             closes = df['close'].tolist()
@@ -331,7 +290,6 @@ def main():
         except Exception:
             sma_insight = "watching key levels 👀"
 
-        # Random levels
         support = round(price * random.uniform(0.88, 0.96), 4)
         tp = round(price * random.uniform(1.08, 1.30), 4)
         sl = round(support * random.uniform(0.96, 0.99), 4)
